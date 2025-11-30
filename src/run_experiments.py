@@ -157,6 +157,7 @@ def run_experiment_series(
         summary_data.append({
             "scenario": result["scenario_name"],
             "batch_size": result["batch_config"]["batch_size"],
+            "use_cycle_time": result["batch_config"]["use_cycle_time"],
             "replication": result["replication"],
             "batch_completion_time": result["batch_completion_time"],
             "avg_cycle_time": result["avg_cycle_time"],

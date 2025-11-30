@@ -165,44 +165,46 @@ class AssemblyLineModel:
                 yield from self.process_station_operations(aircraft, station_id)
                 
                 # Завершение обработки на станции
+                # Завершение обработки на станции (конец чистой обработки)
                 end_time = self.env.now
                 aircraft.station_times[station_id] = (start_time, end_time)
-                
-                # Обновление статистики
+
+                # Обновление статистики по обработке
                 processing_duration = end_time - start_time
-                self.stats.station_stats[station_id].total_processing_time += processing_duration
-                self.stats.station_stats[station_id].aircraft_processed += 1
-                
-                # Перемещение к следующей станции
+                station_stats = self.stats.station_stats[station_id]
+                station_stats.total_processing_time += processing_duration
+                station_stats.aircraft_processed += 1
+
+                # Перемещение к следующей станции / возможная блокировка
                 if station_id < NUM_STATIONS:
+                    block_start = self.env.now  # начало возможной блокировки (после обработки)
+
                     if self.buffers[station_id] is not None:
-                        # Есть буфер - помещаем самолет в буфер
+                        # Есть буфер — ждем свободное место в буфере
                         yield self.buffers[station_id].put(aircraft)
-                        # Освобождаем текущую станцию
-                        if station_id in self.station_busy_start:
-                            del self.station_busy_start[station_id]
-                        self.station_idle_start[station_id] = self.env.now
+                        block_end = self.env.now
+                        blocking_duration = block_end - block_start
+                        station_stats.blocking_time += blocking_duration
                     else:
-                        # Нет буфера - самолет остается на станции (удерживаем ресурс)
-                        # до тех пор, пока следующая станция не освободится
-                        # Ресурс текущей станции будет освобожден автоматически при выходе из with
+                        # Буфера нет — ждем освобождения следующей станции, удерживая текущую
                         next_station_id = station_id + 1
-                        # Ждем освобождения следующей станции, удерживая текущую
                         with self.stations[next_station_id].request() as next_request:
                             yield next_request
-                            # Следующая станция готова, можем покинуть текущую
-                            # Ресурс текущей станции освободится при выходе из внешнего with
-                            pass
-                        # Обновление времени занятости после освобождения
-                        if station_id in self.station_busy_start:
-                            del self.station_busy_start[station_id]
-                        self.station_idle_start[station_id] = self.env.now
-                else:
-                    # Последняя станция - просто освобождаем
+                            block_end = self.env.now
+                            blocking_duration = block_end - block_start
+                            station_stats.blocking_time += blocking_duration
+                        # Здесь ресурс текущей станции освободится при выходе из внешнего with
+
+                    # После блокировки станция уходит в простой
                     if station_id in self.station_busy_start:
                         del self.station_busy_start[station_id]
                     self.station_idle_start[station_id] = self.env.now
-        
+                else:
+                    # Последняя станция — после обработки сразу простаивает
+                    if station_id in self.station_busy_start:
+                        del self.station_busy_start[station_id]
+                    self.station_idle_start[station_id] = self.env.now
+
         # Самолет завершил обработку
         aircraft.exit_time = self.env.now
         self.current_wip -= 1
@@ -361,8 +363,11 @@ class AssemblyLineModel:
         for station_id in range(1, NUM_STATIONS + 1):
             stats = self.stats.station_stats[station_id]
             if total_time > 0:
-                stats.utilization = stats.total_processing_time / (total_time * self.station_capacity)
-        
+                busy_time = stats.total_processing_time + stats.blocking_time
+                stats.utilization = busy_time / (total_time * self.station_capacity)
+            else:
+                stats.utilization = 0.0
+
         # Средний уровень НЗП
         if self.stats.wip_levels:
             total_wip_time = sum(
