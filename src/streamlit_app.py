@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 
 
 RESULTS_DIR = "results"
-ALL_RESULTS_PATH = os.path.join(RESULTS_DIR, "all_results.pkl")
+ALL_RESULTS_PATH = os.path.join(RESULTS_DIR, "/Users/jerry/BMSTU/ОПЖЦАСОИУ/2 sem/курсач/IMDP-SIM-AERO/results/all_results.pkl")
 
 
 # ---------- Загрузка данных ----------
