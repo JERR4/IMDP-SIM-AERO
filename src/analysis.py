@@ -163,10 +163,12 @@ def plot_cycle_time(df: pd.DataFrame, output_dir: str = "report/figures"):
             for s in scenario_list
         ]
 
-        bp = ax.boxplot(cycle_data, labels=scenario_list, patch_artist=True)
+        bp = ax.boxplot(cycle_data, tick_labels=scenario_list, patch_artist=True)
         for patch in bp["boxes"]:
             patch.set_facecolor("lightblue")
             patch.set_alpha(0.7)
+
+
 
         ax.set_xlabel("Сценарий", fontsize=12)
         ax.set_ylabel("Среднее время цикла (часы)", fontsize=12)

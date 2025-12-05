@@ -10,8 +10,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 
-RESULTS_DIR = "results"
-ALL_RESULTS_PATH = os.path.join(RESULTS_DIR, "/Users/jerry/BMSTU/ОПЖЦАСОИУ/2 sem/курсач/IMDP-SIM-AERO/results/all_results.pkl")
+# Определяем путь к директории результатов относительно корня проекта
+# Если запускаем из src/, поднимаемся на уровень выше
+if os.path.basename(os.getcwd()) == "src":
+    RESULTS_DIR = os.path.join("..", "results")
+else:
+    RESULTS_DIR = "results"
+
+ALL_RESULTS_PATH = os.path.join(RESULTS_DIR, "all_results.pkl")
+# Нормализуем путь для кроссплатформенной совместимости
+ALL_RESULTS_PATH = os.path.normpath(ALL_RESULTS_PATH)
 
 
 # ---------- Загрузка данных ----------

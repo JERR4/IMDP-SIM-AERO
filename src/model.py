@@ -11,7 +11,7 @@ import random
 from .data import (
     OPERATIONS, get_operations_by_station, get_operations_by_sequence,
     NUM_STATIONS, MECHANICS_PER_STATION, WORK_HOURS_PER_DAY, WORK_DAYS_PER_WEEK,
-    AIRCRAFT_TYPES
+    AIRCRAFT_TYPES, SHIFT_SCHEDULE
 )
 
 
@@ -116,10 +116,93 @@ class AssemblyLineModel:
     
     def is_work_time(self, current_time: float) -> bool:
         """
-        Проверяет, является ли текущее время рабочим.
-        Упрощенная версия: считаем, что работа идет непрерывно в рамках моделирования.
+        Проверяет, является ли текущее время рабочим согласно графику смен.
+        
+        График работы:
+        - Понедельник-Пятница: две смены
+        - Смена 1: 6:00-10:00, 10:30-14:30 (8 часов)
+        - Смена 2: 14:30-18:30, 19:00-22:00 (7.5 часов)
+        - Выходные: Суббота, Воскресенье
         """
-        return True
+        # Определяем день недели (0 = понедельник, 6 = воскресенье)
+        # Неделя = 168 часов (7 дней * 24 часа)
+        week_hours = 168.0
+        week_position = current_time % week_hours
+        
+        # Определяем день недели (0-6, где 0 = понедельник)
+        day_of_week = int(week_position // 24)
+        
+        # Выходные (суббота=5, воскресенье=6)
+        if day_of_week >= 5:
+            return False
+        
+        # Определяем час дня (0-23)
+        hour_of_day = week_position % 24
+        
+        # Проверяем график первой смены
+        shift1_schedule = SHIFT_SCHEDULE["shift1"]
+        day_name = ["monday", "tuesday", "wednesday", "thursday", "friday"][day_of_week]
+        shift1_periods = shift1_schedule[day_name]
+        
+        for start_hour, end_hour in shift1_periods:
+            if start_hour <= hour_of_day < end_hour:
+                return True
+        
+        # Проверяем график второй смены
+        shift2_schedule = SHIFT_SCHEDULE["shift2"]
+        shift2_periods = shift2_schedule[day_name]
+        
+        for start_hour, end_hour in shift2_periods:
+            if start_hour <= hour_of_day < end_hour:
+                return True
+        
+        return False
+    
+    def wait_until_work_time(self, current_time: float) -> float:
+        """
+        Возвращает время до начала следующего рабочего периода.
+        Если сейчас рабочее время, возвращает 0.
+        """
+        if self.is_work_time(current_time):
+            return 0.0
+        
+        # Ищем следующий рабочий период
+        week_hours = 168.0
+        week_position = current_time % week_hours
+        day_of_week = int(week_position // 24)
+        hour_of_day = week_position % 24
+        
+        # Если выходной, переходим к понедельнику 6:00
+        if day_of_week >= 5:
+            days_until_monday = 7 - day_of_week
+            hours_until_monday = days_until_monday * 24 - hour_of_day
+            return hours_until_monday + 6.0  # До 6:00 понедельника
+        
+        # Ищем следующий рабочий период в текущей неделе
+        day_name = ["monday", "tuesday", "wednesday", "thursday", "friday"][day_of_week]
+        
+        # Собираем все рабочие периоды дня в один список и сортируем
+        all_periods = []
+        shift1_periods = SHIFT_SCHEDULE["shift1"][day_name]
+        shift2_periods = SHIFT_SCHEDULE["shift2"][day_name]
+        all_periods.extend(shift1_periods)
+        all_periods.extend(shift2_periods)
+        all_periods.sort(key=lambda x: x[0])  # Сортируем по времени начала
+        
+        # Ищем следующий рабочий период
+        for start_hour, end_hour in all_periods:
+            if hour_of_day < start_hour:
+                # Нашли следующий период в этот же день
+                return start_hour - hour_of_day
+            # Если мы уже прошли этот период, продолжаем поиск
+        
+        # Если все периоды дня прошли, переходим к следующему рабочему дню
+        if day_of_week < 4:  # Не пятница
+            next_day_start = (24 - hour_of_day) + 6.0  # До 6:00 следующего дня
+            return next_day_start
+        else:  # Пятница - переходим к понедельнику
+            hours_until_monday = (7 - day_of_week) * 24 - hour_of_day + 6.0
+            return hours_until_monday
     
     def get_mechanics_resource(self, station_id: int) -> simpy.Resource:
         """Возвращает ресурс механиков для указанного участка."""
@@ -269,7 +352,12 @@ class AssemblyLineModel:
         self, op, aircraft: Aircraft, processing_time: float,
         mechanics_resource: simpy.Resource, station_id: int
     ):
-        """Выполняет одну операцию с запросом необходимого количества механиков."""
+        """
+        Выполняет одну операцию с запросом необходимого количества механиков.
+        Операция выполняется только в рабочие часы согласно графику смен.
+        Если операция начинается в рабочее время, она может продолжаться и в нерабочее время
+        (как в реальности - операция не прерывается на обеденный перерыв).
+        """
         mechanics_needed = min(op.mechanics_required, mechanics_resource.capacity)
         
         # Запрашиваем необходимое количество механиков
@@ -283,8 +371,26 @@ class AssemblyLineModel:
             yield req
         
         try:
+            # Ждем начала рабочего времени, если сейчас нерабочее время
+            # Операции могут начинаться только в рабочее время
+            wait_time = self.wait_until_work_time(self.env.now)
+            if wait_time > 0:
+                yield self.env.timeout(wait_time)
+            
             # Выполняем операцию
+            # В реальности операции могут продолжаться и в нерабочее время (не прерываются)
+            # Но для строгого соблюдения графика можно раскомментировать код ниже
             yield self.env.timeout(processing_time)
+            
+            # Альтернативный вариант: строгое соблюдение рабочих часов
+            # remaining_time = processing_time
+            # while remaining_time > 0:
+            #     if not self.is_work_time(self.env.now):
+            #         wait_time = self.wait_until_work_time(self.env.now)
+            #         yield self.env.timeout(wait_time)
+            #     time_step = min(remaining_time, 1.0)
+            #     yield self.env.timeout(time_step)
+            #     remaining_time -= time_step
         finally:
             # Освобождаем механиков (в SimPy используется resource.release(request))
             for req in requests:
