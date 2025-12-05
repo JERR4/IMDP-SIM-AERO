@@ -185,11 +185,12 @@ def plot_cycle_time(df: pd.DataFrame, output_dir: str = "report/figures"):
 
 
 def plot_station_utilization(df: pd.DataFrame, output_dir: str = "report/figures"):
-    """График загрузки участков по сценариям."""
+    """Строит график загрузки станций по сценариям."""
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    df = df[df["use_cycle_time"] == True].copy()
 
     batch_sizes = [75, 100]
+
+    # 2 строки (по партии), 5 столбцов (по участкам)
     fig, axes = plt.subplots(2, 5, figsize=(20, 8))
 
     for batch_idx, batch_size in enumerate(batch_sizes):
@@ -197,8 +198,8 @@ def plot_station_utilization(df: pd.DataFrame, output_dir: str = "report/figures
 
         for station_id in range(1, 6):
             ax = axes[batch_idx, station_id - 1]
-            station_col = f"station_{station_id}_utilization"
 
+            station_col = f"station_{station_id}_utilization"
             if station_col not in data.columns:
                 ax.set_visible(False)
                 continue
@@ -215,11 +216,8 @@ def plot_station_utilization(df: pd.DataFrame, output_dir: str = "report/figures
 
             ax.set_xlabel("Сценарий", fontsize=9)
             ax.set_ylabel("Загрузка", fontsize=9)
-            ax.set_title(
-                f"Участок {station_id}, партия {batch_size}",
-                fontsize=10,
-                fontweight="bold",
-            )
+            ax.set_title(f"Участок {station_id}, партия {batch_size}",
+                         fontsize=10, fontweight="bold")
             ax.set_xticks(x_pos)
             ax.set_xticklabels(
                 scenario_means["scenario"],
@@ -227,16 +225,17 @@ def plot_station_utilization(df: pd.DataFrame, output_dir: str = "report/figures
                 ha="right",
                 fontsize=8,
             )
-            ax.set_ylim(0, 0.1)
+
+            # ВАЖНО: динамический предел по Y
+            max_util = scenario_means[station_col].max()
+            ax.set_ylim(0, max_util * 1.1)   # небольшой запас сверху
 
             ax.grid(axis="y", alpha=0.3)
+            ax.axhline(y=1.0, linestyle="--", alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(output_dir, "station_utilization.png"),
-        dpi=300,
-        bbox_inches="tight",
-    )
+    plt.savefig(os.path.join(output_dir, "station_utilization.png"),
+                dpi=300, bbox_inches="tight")
     plt.close()
     print(f"График сохранен: {os.path.join(output_dir, 'station_utilization.png')}")
 

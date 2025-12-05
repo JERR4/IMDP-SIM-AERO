@@ -18,9 +18,16 @@ NUM_STATIONS = 5
 # Количество механиков на участок
 MECHANICS_PER_STATION = 8
 
+# ===== КЛЮЧЕВАЯ ПРАВКА: время цикла =====
+# По расчету критического пути:
+# - Для SA101 суммарное время по участку 5 ≈ 16 ч
+# - Для SA102 суммарное время по участку 5 ≈ 17.7 ч (бутылочное горлышко)
+# Поэтому задаем время цикла на уровне узкого места, чтобы линия работала "на пределе"
+# и различия между сценариями (буферы, capacity, гибкая рабочая сила) были заметны.
+
 # Время цикла (в часах)
-CYCLE_TIME_75 = 4 * 24  # 4 дня = 96 часов
-CYCLE_TIME_100 = 3.5 * 24  # 3.5 дня = 84 часа
+CYCLE_TIME_75 = 18.0   # партия 75 самолётов
+CYCLE_TIME_100 = 18.0  # партия 100 самолётов
 
 # График работы смен (в часах от начала недели)
 # Первая смена: 6:00-10:00, 10:30-14:30 (пн-пт)
@@ -353,10 +360,10 @@ def get_total_processing_time(station_id: int, aircraft_type: str) -> float:
     operations = get_operations_by_station(station_id)
     if not operations:
         return 0.0
-    
+
     # Находим максимальную последовательность
     max_sequence = max(op.sequence for op in operations)
-    
+
     total_time = 0.0
     for seq in range(1, max_sequence + 1):
         seq_operations = get_operations_by_sequence(station_id, seq)
@@ -367,7 +374,7 @@ def get_total_processing_time(station_id: int, aircraft_type: str) -> float:
                 for op in seq_operations
             )
             total_time += seq_time
-    
+
     return total_time
 
 
@@ -383,4 +390,3 @@ BATCH_100 = {
     "distribution": {"SA101": 0.45, "SA102": 0.30, "SA103": 0.25},  # 45% SA101, 30% SA102, 25% SA103
     "cycle_time": CYCLE_TIME_100,
 }
-
